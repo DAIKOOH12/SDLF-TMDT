@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# CDK
+infra/cdk.out/
+infra/.venv/
+
+# Crawler output
+crawler/output/
+
+# ML artifacts
+ml/*.joblib
+ml/*.csv
+
+# Misc
+.DS_Store
+*.log
+
+.claude
