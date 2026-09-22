@@ -7,6 +7,7 @@ venv/
 # CDK
 infra/cdk.out/
 infra/.venv/
+infra/lambda_build/
 
 # Crawler output
 crawler/output/

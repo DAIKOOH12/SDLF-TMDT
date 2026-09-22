@@ -58,6 +58,8 @@ def ensure_analytics_table():
             source                STRING,
             name                  STRING,
             category              STRING,
+            brand_name            STRING,
+            is_official_store     BOOLEAN,
             price                 DOUBLE,
             original_price        DOUBLE,
             discount_pct          DOUBLE,
@@ -121,12 +123,16 @@ def enrich(df):
         ),
     )
 
+    # Tiki already provides discount_rate as a 0-100 percentage; fall back to
+    # computing it from price/original_price only if that field is missing.
     df = df.withColumn(
         "discount_pct",
-        F.when(
+        F.when(F.col("discount_rate").isNotNull(), F.col("discount_rate") / F.lit(100.0))
+        .when(
             (F.col("original_price").isNotNull()) & (F.col("original_price") > 0),
             (F.col("original_price") - F.col("price")) / F.col("original_price"),
-        ).otherwise(F.lit(0.0)),
+        )
+        .otherwise(F.lit(0.0)),
     )
 
     # Heuristic ranking score for the dashboard — a normalized blend of sold
@@ -147,6 +153,8 @@ def enrich(df):
         "source",
         "name",
         "category",
+        "brand_name",
+        "is_official_store",
         "price",
         "original_price",
         "discount_pct",

@@ -19,19 +19,23 @@ REQUEST_HEADERS = {
 REQUEST_TIMEOUT_SECONDS = 15
 REQUEST_DELAY_SECONDS = 1.0  # polite delay between page/API requests
 
-# Tiki's public (unofficial) listing API. Endpoint shape and field names are
-# NOT officially documented and can change — verify with a live request
-# (e.g. via browser devtools network tab on a category page) before relying
-# on this for real data collection.
+# Confirmed against a live DevTools capture on 2026-09-22:
+#   https://tiki.vn/api/personalish/v1/blocks/listings
+#     ?limit=40&include=advertisement&aggregations=2
+#     &version=home-personalized&trackity_id=<uuid>
+#     &category=<id>&page=<n>&urlKey=<slug>
+# This is an unofficial API — field names/params can change; re-verify via
+# devtools if the crawler starts returning empty/malformed data.
 TIKI_LISTING_URL = "https://tiki.vn/api/personalish/v1/blocks/listings"
 
-# category_id -> human-readable label, used for tagging + the dashboard.
-# Find category ids from a category page URL on tiki.vn, e.g.
-# https://tiki.vn/dien-thoai-may-tinh-bang/c1789 -> category_id = 1789
+# category_id -> {label used in our own data, url_key as it appears on tiki.vn}
+# Only "dien_thoai_may_tinh_bang" (1789) has been verified against a live
+# request so far. Verify the other two the same way (open the category page,
+# check the "listings" request in DevTools) before trusting their data.
 TIKI_CATEGORIES = {
-    1789: "dien_thoai_may_tinh_bang",
-    1846: "do_gia_dung",
-    931: "thoi_trang_nu",
+    1789: {"label": "dien_thoai_may_tinh_bang", "url_key": "dien-thoai-may-tinh-bang"},
+    1846: {"label": "do_gia_dung", "url_key": "do-gia-dung"},
+    931: {"label": "thoi_trang_nu", "url_key": "thoi-trang-nu"},
 }
 
 SOURCES = {

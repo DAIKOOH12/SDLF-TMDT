@@ -2,10 +2,11 @@
 signals (sales volume, review growth, rating) over time.
 
 Hits Tiki's public but unofficial listing API directly (JSON, no HTML
-parsing needed) — much more stable than scraping rendered HTML, but the
-response shape is undocumented and can change without notice. Inspect a
-live response (browser devtools -> Network -> XHR on a category page)
-before relying on the field names in RESPONSE_FIELDS below.
+parsing needed). Endpoint and field names were confirmed against a live
+DevTools capture on 2026-09-22 for category 1789 (Điện thoại - Máy tính
+bảng) — see config.py for the exact URL/params. This is undocumented and
+can change without notice; re-check via devtools if data stops looking
+right.
 
 Each run captures one *snapshot* per product: the same product_id will
 appear again in tomorrow's crawl with updated quantity_sold/review_count/
@@ -17,6 +18,7 @@ across days, only within a single run.
 import argparse
 import logging
 import time
+import uuid
 from datetime import datetime, timezone
 
 import requests
@@ -38,14 +40,19 @@ LISTING_URL = SOURCES[SOURCE_NAME]["listing_url"]
 CATEGORIES = SOURCES[SOURCE_NAME]["categories"]
 
 PAGE_SIZE = 40
+TRACKITY_ID = str(uuid.uuid4())  # one session id per crawler run is enough
 
 
-def fetch_listing_page(category_id: int, page: int) -> dict | None:
+def fetch_listing_page(category_id: int, url_key: str, page: int) -> dict | None:
     params = {
         "limit": PAGE_SIZE,
-        "page": page,
+        "include": "advertisement",
+        "aggregations": 2,
+        "version": "home-personalized",
+        "trackity_id": TRACKITY_ID,
         "category": category_id,
-        "sort": "top_seller",  # bias toward products worth tracking for "potential"
+        "page": page,
+        "urlKey": url_key,
     }
     try:
         resp = requests.get(
@@ -63,28 +70,40 @@ def fetch_listing_page(category_id: int, page: int) -> dict | None:
 
 def parse_product(item: dict, category_label: str) -> dict:
     crawled_at = datetime.now(timezone.utc)
+
+    quantity_sold = safe_get(item, ["quantity_sold", "value"])
+    if quantity_sold is None:
+        # Ads/new listings often omit quantity_sold entirely — the amplitude
+        # block is more consistently present (defaults to 0 rather than null).
+        quantity_sold = safe_get(item, ["visible_impression_info", "amplitude", "all_time_quantity_sold"], 0)
+
+    original_price = item.get("original_price") or item.get("price")
+    seller_type = safe_get(item, ["visible_impression_info", "amplitude", "seller_type"])
+
     return {
         "product_id": str(item.get("id")),
         "source": SOURCE_NAME,
         "name": item.get("name"),
         "category": category_label,
+        "brand_name": item.get("brand_name"),
         "price": item.get("price"),
-        "original_price": item.get("list_price") or item.get("original_price"),
+        "original_price": original_price,
+        "discount_rate": item.get("discount_rate"),
         "rating_average": item.get("rating_average"),
         "review_count": item.get("review_count"),
-        "quantity_sold": safe_get(item, ["quantity_sold", "value"]),
-        "seller_name": item.get("seller_name") or item.get("brand_name"),
-        "badges_new": bool(item.get("badges_new")),
+        "quantity_sold": quantity_sold,
+        "seller_id": item.get("seller_id"),
+        "is_official_store": seller_type == "OFFICIAL_STORE",
         "crawled_at": crawled_at.isoformat(),
         "crawl_date": crawled_at.strftime("%Y-%m-%d"),
     }
 
 
-def crawl_category(category_id: int, category_label: str, pages: int) -> list[dict]:
+def crawl_category(category_id: int, category_label: str, url_key: str, pages: int) -> list[dict]:
     records = []
     for page in range(1, pages + 1):
         logger.info("Fetching %s page %d (category_id=%d)", category_label, page, category_id)
-        payload = fetch_listing_page(category_id, page)
+        payload = fetch_listing_page(category_id, url_key, page)
         if not payload:
             continue
 
@@ -106,8 +125,10 @@ def crawl_category(category_id: int, category_label: str, pages: int) -> list[di
 
 def crawl(pages_per_category: int) -> list[dict]:
     all_records = []
-    for category_id, category_label in CATEGORIES.items():
-        all_records.extend(crawl_category(category_id, category_label, pages_per_category))
+    for category_id, meta in CATEGORIES.items():
+        all_records.extend(
+            crawl_category(category_id, meta["label"], meta["url_key"], pages_per_category)
+        )
     return all_records
 
 

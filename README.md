@@ -133,7 +133,7 @@ sinh chi phí AWS khi không dùng nữa.
 |---|---|
 | `app.py` | Điểm vào CDK — ghép 3 stack theo đúng thứ tự phụ thuộc (storage → glue → pipeline). |
 | `infra/storage_stack.py` | Tạo 5 bucket S3: `raw`, `stage`, `analytics`, `scripts` (chứa code PySpark), `athena-results`. Dùng `RemovalPolicy.RETAIN` vì đây là data lake — không muốn `cdk destroy` xóa mất lịch sử snapshot đã crawl được nhiều ngày. |
-| `infra/glue_stack.py` | Tạo 2 database Glue Data Catalog (`product_stage`, `product_analytics`), IAM role cho Glue job, tự động upload script từ `glue_jobs/` lên bucket scripts, và định nghĩa 2 Glue Job (`raw-to-stage`, `stage-to-analytics`) với cấu hình Iceberg. |
+| `infra/glue_stack.py` | Tạo 2 database Glue Data Catalog (`product_stage`, `product_analytics`), IAM role cho Glue job, và định nghĩa 2 Glue Job (`raw-to-stage`, `stage-to-analytics`) với cấu hình Iceberg — chỉ *khai báo* đường dẫn script trên S3, việc upload thật sự do `glue_jobs/upload_scripts.py` đảm nhiệm riêng (xem ghi chú ở Bước 1). |
 | `infra/pipeline_stack.py` | Tạo Lambda chạy `tiki_crawler` qua `lambda_handler.py`, gắn lịch EventBridge (mặc định 18:00 UTC hàng ngày), và định nghĩa Step Functions state machine `product-pipeline` nối tiếp 2 Glue job. |
 
 ### `ml/` — tại sao là bài toán phân loại, không phải hồi quy giá
@@ -172,16 +172,19 @@ thường).
 ### Bước 0. Yêu cầu môi trường
 - Python 3.11+, Node.js 18+ (CLI của CDK), AWS CLI đã cấu hình
   account/profile
-- Docker (CDK cần Docker để đóng gói dependency cho Lambda crawler)
 - `npm install -g aws-cdk`
+- Không cần Docker — Lambda crawler được đóng gói bằng script Python thuần
+  (`crawler/build_lambda.py`), không dùng Docker image để bundling.
 
 ### Bước 1. Triển khai hạ tầng (S3, Glue, Step Functions)
 ```bash
 cd infra
 python -m venv .venv && . .venv/Scripts/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python ../crawler/build_lambda.py   # đóng gói code crawler cho Lambda (chạy lại mỗi khi sửa crawler/)
 cdk bootstrap                # chỉ cần chạy 1 lần cho mỗi account/region
 cdk deploy --all
+python ../glue_jobs/upload_scripts.py --bucket <prefix>-scripts   # upload script PySpark (chạy lại mỗi khi sửa glue_jobs/)
 ```
 Lệnh này tạo ra:
 - Bucket S3: `<prefix>-raw`, `<prefix>-stage`, `<prefix>-analytics`,
@@ -193,6 +196,13 @@ Lệnh này tạo ra:
 
 > **Lưu ý**: đổi `PREFIX` trong `infra/app.py` thành giá trị duy nhất của
 > riêng bạn trước khi deploy, vì tên bucket S3 phải duy nhất trên toàn AWS.
+
+> **Vì sao có bước `upload_scripts.py` riêng?** CDK's `BucketDeployment`
+> construct (cách "chuẩn" để upload file lên S3 lúc deploy) hiện đang lỗi
+> trên nhiều account/region do một bug tương thích Python 3.9/urllib3 bên
+> trong Lambda layer awscli nội bộ mà CDK tự tạo — lỗi từ phía AWS/CDK,
+> không phải do repo này. Giải pháp: tự upload bằng boto3 thay vì dựa vào
+> construct đó.
 
 ### Bước 2. Chạy crawler (local hoặc qua Lambda/EventBridge)
 ```bash

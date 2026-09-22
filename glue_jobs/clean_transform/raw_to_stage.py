@@ -30,6 +30,7 @@ from pyspark.sql.types import (
     BooleanType,
     DoubleType,
     IntegerType,
+    LongType,
     StringType,
     StructField,
     StructType,
@@ -56,13 +57,15 @@ RAW_SCHEMA = StructType(
         StructField("source", StringType()),
         StructField("name", StringType()),
         StructField("category", StringType()),
+        StructField("brand_name", StringType()),
         StructField("price", DoubleType()),
         StructField("original_price", DoubleType()),
+        StructField("discount_rate", DoubleType()),
         StructField("rating_average", DoubleType()),
         StructField("review_count", IntegerType()),
         StructField("quantity_sold", IntegerType()),
-        StructField("seller_name", StringType()),
-        StructField("badges_new", BooleanType()),
+        StructField("seller_id", LongType()),
+        StructField("is_official_store", BooleanType()),
         StructField("crawled_at", StringType()),
         StructField("crawl_date", StringType()),
     ]
@@ -74,19 +77,21 @@ def ensure_stage_table():
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {STAGE_FQN} (
-            product_id      STRING,
-            source          STRING,
-            name            STRING,
-            category        STRING,
-            price           DOUBLE,
-            original_price  DOUBLE,
-            rating_average  DOUBLE,
-            review_count    INT,
-            quantity_sold   INT,
-            seller_name     STRING,
-            badges_new      BOOLEAN,
-            crawl_date      DATE,
-            crawled_at      TIMESTAMP
+            product_id         STRING,
+            source             STRING,
+            name               STRING,
+            category           STRING,
+            brand_name         STRING,
+            price              DOUBLE,
+            original_price     DOUBLE,
+            discount_rate      DOUBLE,
+            rating_average     DOUBLE,
+            review_count       INT,
+            quantity_sold      INT,
+            seller_id          BIGINT,
+            is_official_store  BOOLEAN,
+            crawl_date         DATE,
+            crawled_at         TIMESTAMP
         )
         USING iceberg
         PARTITIONED BY (source)
@@ -110,6 +115,17 @@ def clean(df):
     # exactly the "potential" signal we want to catch).
     df = df.withColumn("quantity_sold", F.coalesce(F.col("quantity_sold"), F.lit(0)))
     df = df.withColumn("review_count", F.coalesce(F.col("review_count"), F.lit(0)))
+    df = df.withColumn("is_official_store", F.coalesce(F.col("is_official_store"), F.lit(False)))
+
+    # original_price is missing/zero for some listings; fall back to price
+    # itself (no discount observed) rather than losing the row.
+    df = df.withColumn(
+        "original_price",
+        F.when(
+            (F.col("original_price").isNull()) | (F.col("original_price") <= 0),
+            F.col("price"),
+        ).otherwise(F.col("original_price")),
+    )
 
     df = df.withColumn("name", F.trim(F.col("name")))
     df = df.withColumn("category", F.trim(F.col("category")))
@@ -119,13 +135,15 @@ def clean(df):
         "source",
         "name",
         "category",
+        "brand_name",
         "price",
         "original_price",
+        "discount_rate",
         "rating_average",
         "review_count",
         "quantity_sold",
-        "seller_name",
-        "badges_new",
+        "seller_id",
+        "is_official_store",
         "crawl_date",
         "crawled_at",
     )

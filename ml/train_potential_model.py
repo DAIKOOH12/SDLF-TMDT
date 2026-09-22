@@ -37,13 +37,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("train_potential_model")
 
 NUMERIC_FEATURES = ["price", "discount_pct", "rating_average", "review_count", "review_growth"]
-CATEGORICAL_FEATURES = ["category", "source"]
+CATEGORICAL_FEATURES = ["category", "source", "is_official_store"]
 LABEL = "is_potential"
 
 
 def load_data(database: str, table: str, athena_output: str | None) -> pd.DataFrame:
     query = f"""
-        SELECT category, source, price, discount_pct, rating_average,
+        SELECT category, source, is_official_store, price, discount_pct, rating_average,
                review_count, review_growth, sold_growth_rate, year_month
         FROM {table}
         WHERE sold_growth_rate IS NOT NULL
