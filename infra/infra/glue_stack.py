@@ -2,13 +2,21 @@ from aws_cdk import Stack
 from aws_cdk import aws_glue as glue
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_s3 as s3
-from aws_cdk import aws_s3_deployment as s3_deploy
 from constructs import Construct
 
 
 class GlueStack(Stack):
     """Glue Data Catalog databases + the two PySpark/Iceberg jobs
     (raw_to_stage, stage_to_analytics) and the IAM role they run under.
+
+    The CfnJob resources below only *reference* an S3 script location —
+    they don't upload the .py files themselves. Deliberately not using
+    CDK's `BucketDeployment` construct for that: as of this CDK version it
+    fails on some accounts/regions with a Python 3.9/urllib3 incompatibility
+    inside AWS's own bundled awscli Lambda layer (upstream CDK bug, not
+    fixable from this repo). Upload the scripts with
+    `python ../glue_jobs/upload_scripts.py --bucket <prefix>-scripts`
+    after `cdk deploy` instead — see docs/RUNBOOK.md.
     """
 
     def __init__(
@@ -38,16 +46,6 @@ class GlueStack(Stack):
             "AnalyticsDatabase",
             catalog_id=self.account,
             database_input=glue.CfnDatabase.DatabaseInputProperty(name=self.analytics_database_name),
-        )
-
-        # Upload the PySpark scripts from glue_jobs/clean_transform to the
-        # scripts bucket so the CfnJob ScriptLocation stays in sync with repo code.
-        deployment = s3_deploy.BucketDeployment(
-            self,
-            "GlueScriptsDeployment",
-            sources=[s3_deploy.Source.asset("../glue_jobs/clean_transform")],
-            destination_bucket=scripts_bucket,
-            destination_key_prefix="scripts",
         )
 
         self.glue_role = iam.Role(
@@ -102,7 +100,6 @@ class GlueStack(Stack):
                 "--WAREHOUSE_PATH": f"s3://{stage_bucket.bucket_name}/",
             },
         )
-        self.raw_to_stage_job.node.add_dependency(deployment)
 
         self.stage_to_analytics_job = glue.CfnJob(
             self,
@@ -126,4 +123,3 @@ class GlueStack(Stack):
                 "--WAREHOUSE_PATH": f"s3://{analytics_bucket.bucket_name}/",
             },
         )
-        self.stage_to_analytics_job.node.add_dependency(deployment)

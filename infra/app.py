@@ -34,6 +34,7 @@ glue_stack.add_dependency(storage)
 pipeline = PipelineStack(
     app,
     "ProductPipelineStack",
+    prefix=PREFIX,
     raw_bucket=storage.raw_bucket,
     raw_to_stage_job=glue_stack.raw_to_stage_job,
     stage_to_analytics_job=glue_stack.stage_to_analytics_job,

@@ -1,4 +1,5 @@
 from aws_cdk import RemovalPolicy, Stack
+from aws_cdk import aws_athena as athena
 from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
@@ -33,4 +34,17 @@ class StorageStack(Stack):
         )
         self.athena_results_bucket = s3.Bucket(
             self, "AthenaResultsBucket", bucket_name=f"{prefix}-athena-results", **common_kwargs
+        )
+
+        self.athena_workgroup_name = f"{prefix}-athena"
+        athena.CfnWorkGroup(
+            self,
+            "AthenaWorkGroup",
+            name=self.athena_workgroup_name,
+            work_group_configuration=athena.CfnWorkGroup.WorkGroupConfigurationProperty(
+                result_configuration=athena.CfnWorkGroup.ResultConfigurationProperty(
+                    output_location=f"s3://{self.athena_results_bucket.bucket_name}/"
+                ),
+                enforce_work_group_configuration=True,
+            ),
         )
