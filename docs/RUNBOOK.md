@@ -123,10 +123,23 @@ cdk bootstrap     # chỉ chạy 1 lần / account+region
 cdk deploy --all
 ```
 
-CDK sẽ hỏi xác nhận IAM policy trước khi tạo — gõ `y`. Quá trình này mất
-vài phút (chủ yếu do tạo Glue Job).
+CDK sẽ hỏi xác nhận IAM policy trước khi tạo — gõ `y` và **đợi tới khi
+chạy xong hẳn**, không Ctrl+C giữa chừng. `ProductPipelineStack` có thay
+đổi IAM (Lambda role, quyền invoke...) nên sẽ dừng lại hỏi xác nhận riêng
+— nếu bạn thoát terminal/ngắt lệnh đúng lúc đang chờ xác nhận này,
+CloudFormation đã tạo sẵn changeset nhưng chưa chạy, stack sẽ bị kẹt ở
+trạng thái `REVIEW_IN_PROGRESS` dù chưa có resource nào thật sự tồn tại.
 
-**Sau khi `cdk deploy --all` chạy xong**, upload 2 script PySpark lên bucket
+> **Nếu gặp `REVIEW_IN_PROGRESS` mà không phải do trùng tên bucket** (khác
+> với tình huống ở Bước 10): kiểm tra `aws cloudformation describe-stacks
+> --stack-name ProductPipelineStack --query 'Stacks[0].StackStatus'`. Nếu
+> ra `REVIEW_IN_PROGRESS` và các resource liên quan (Lambda, EventBridge
+> rule) chưa tồn tại (`aws lambda get-function --function-name
+> product-analytics-demo-crawler` báo not found), nghĩa là changeset đó
+> **chưa từng chạy** — không cần xóa gì cả, chỉ cần chạy lại `cdk deploy
+> --all` và xác nhận `y` tới cùng lần này.
+
+**Sau khi `cdk deploy --all` chạy xong (cả 3 stack đều `CREATE_COMPLETE`)**, upload 2 script PySpark lên bucket
 scripts (không dùng CDK `BucketDeployment` vì construct đó hiện đang lỗi
 trên nhiều account/region do bug tương thích Python 3.9/urllib3 trong layer
 awscli nội bộ của CDK — lỗi từ phía AWS, không phải do repo này):
@@ -264,17 +277,63 @@ Kiểm tra: log in ra ROC-AUC và classification report; file
 
 ---
 
-## Bước 10 — Dọn dẹp (khi demo/nộp bài xong, tránh phát sinh phí AWS)
+## Bước 10 — Reset toàn bộ để chạy lại từ đầu (dùng khi test lặp lại)
+
+Khi đang thử nghiệm/sửa infra và muốn **xóa sạch, deploy lại từ con số 0**
+nhiều lần, làm đúng thứ tự sau — bỏ qua thứ tự này (ví dụ chỉ `cdk destroy`
+rồi `cdk deploy` ngay) sẽ dính lỗi **"bucket already exists"** vì bucket
+dùng `RemovalPolicy.RETAIN` (xem `storage_stack.py`) nên `cdk destroy`
+**không xóa bucket**, chỉ xóa các resource khác (Glue Job, Lambda, Step
+Functions...). Bucket còn sống sót sẽ chặn lần deploy tiếp theo do tên
+bucket S3 phải unique toàn AWS.
 
 ```bash
 cd infra
+
+# 1. Xóa toàn bộ resource do CDK quản lý (Glue, Lambda, Step Functions...)
 cdk destroy --all
+
+# 2. Xóa sạch 5 bucket còn sót lại (kể cả object version + delete marker,
+#    vì bucket có versioned=True) — script sẽ hỏi xác nhận trước khi xóa
+python reset_buckets.py --prefix product-analytics-demo
+
+# 3. Deploy lại từ đầu, sạch 100%
+python ../crawler/build_lambda.py
+cdk deploy --all
+python ../glue_jobs/upload_scripts.py --bucket product-analytics-demo-scripts
 ```
 
-**Lưu ý**: các bucket S3 dùng `RemovalPolicy.RETAIN` (xem
-`storage_stack.py`) nên sẽ **không** bị xóa tự động — vào Console S3 xóa
-tay nếu chắc chắn không cần dữ liệu nữa. Đây là chủ đích: tránh mất dữ liệu
-nếu `cdk destroy` chạy nhầm.
+> `reset_buckets.py` là script **tự xóa vĩnh viễn** dữ liệu trong 5 bucket —
+> chỉ chạy khi thật sự muốn xóa sạch để test lại, không chạy khi bucket
+> đang chứa dữ liệu crawl nhiều ngày bạn cần giữ.
+
+**Nếu `cdk destroy --all` báo lỗi `AthenaWorkGroup` không xóa được**
+(`WorkGroup ... is not empty`): xảy ra nếu bạn đã chạy ít nhất 1 query trên
+Athena workgroup đó (có lịch sử query bên trong, CloudFormation mặc định
+từ chối xóa workgroup không rỗng). Code đã có `recursive_delete_option=True`
+để tránh lỗi này cho lần sau, nhưng nếu dính lại (ví dụ đang dùng bản code
+cũ chưa có dòng đó), xử lý thủ công:
+```bash
+aws athena delete-work-group --work-group product-analytics-demo-athena --recursive-delete-option
+aws cloudformation delete-stack --stack-name ProductStorageStack
+```
+rồi mới chạy tiếp bước 2-3 ở trên.
+
+**Nếu quên bước 2 và deploy dính lỗi "already exists"**: kiểm tra trạng thái
+stack trước khi làm gì tiếp — có thể nó đang kẹt ở `REVIEW_IN_PROGRESS`
+(chỉ là "vỏ" stack do changeset lỗi, chưa có resource thật):
+```bash
+aws cloudformation describe-stacks --stack-name ProductStorageStack --query 'Stacks[0].StackStatus' --output text
+```
+Nếu ra `REVIEW_IN_PROGRESS`, xóa nốt cái vỏ đó rồi chạy lại bước 2-3:
+```bash
+aws cloudformation delete-stack --stack-name ProductStorageStack
+```
+
+### Dọn dẹp vĩnh viễn khi kết thúc đồ án (không định test lại nữa)
+
+Làm y hệt 2 bước đầu ở trên (`cdk destroy --all` rồi `python reset_buckets.py
+--prefix product-analytics-demo`) và dừng ở đó — không cần deploy lại.
 
 ---
 
@@ -292,4 +351,4 @@ nếu `cdk destroy` chạy nhầm.
 | 7 | Query Athena kiểm tra | Khi cần xem dữ liệu |
 | 8 | Dựng dashboard | 1 lần, chỉnh sửa dần |
 | 9 | Train ML | Khi đã đủ dữ liệu lịch sử |
-| 10 | `cdk destroy` | Khi kết thúc dự án |
+| 10 | `cdk destroy` + `reset_buckets.py` (+ deploy lại nếu test tiếp) | Mỗi lần muốn test lại từ đầu, hoặc 1 lần khi kết thúc dự án |

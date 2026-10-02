@@ -1,0 +1,6 @@
+cd infra
+cdk destroy --all
+python reset_buckets.py --prefix product-analytics-demo
+python ../crawler/build_lambda.py
+cdk deploy --all
+python ../glue_jobs/upload_scripts.py --bucket product-analytics-demo-scripts

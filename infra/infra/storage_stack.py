@@ -41,6 +41,10 @@ class StorageStack(Stack):
             self,
             "AthenaWorkGroup",
             name=self.athena_workgroup_name,
+            # Without this, `cdk destroy` fails once you've actually run a
+            # query (CloudFormation refuses to delete a non-empty workgroup)
+            # — exactly what happened testing this stack repeatedly.
+            recursive_delete_option=True,
             work_group_configuration=athena.CfnWorkGroup.WorkGroupConfigurationProperty(
                 result_configuration=athena.CfnWorkGroup.ResultConfigurationProperty(
                     output_location=f"s3://{self.athena_results_bucket.bucket_name}/"

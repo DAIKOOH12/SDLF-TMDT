@@ -17,9 +17,15 @@ Usage:
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import boto3
+
+# Avoid UnicodeEncodeError on Windows when the project path contains
+# non-ASCII characters (e.g. Vietnamese diacritics) and the console uses
+# the default cp1252 encoding instead of UTF-8.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 SCRIPTS_DIR = Path(__file__).resolve().parent / "clean_transform"
 SCRIPT_FILES = ["raw_to_stage.py", "stage_to_analytics.py"]
