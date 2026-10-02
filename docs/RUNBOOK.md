@@ -13,7 +13,7 @@ trị này cho khớp.
 
 | Giá trị | Nội dung |
 |---|---|
-| AWS Account | `770880870430` |
+| AWS Account | `190176596181` |
 | Region | `ap-southeast-1` |
 | Prefix | `product-analytics-demo` |
 | Bucket Raw | `product-analytics-demo-raw` |
@@ -29,7 +29,7 @@ trị này cho khớp.
 | Lambda crawler | `product-analytics-demo-crawler` |
 | EventBridge rule (crawl hàng ngày) | `product-analytics-demo-daily-crawl` |
 | Step Functions state machine | `product-pipeline` |
-| Step Functions ARN | `arn:aws:states:ap-southeast-1:770880870430:stateMachine:product-pipeline` |
+| Step Functions ARN | `arn:aws:states:ap-southeast-1:190176596181:stateMachine:product-pipeline` |
 
 Đánh dấu ✅ sau mỗi bước đã làm xong và kiểm tra được kết quả — đừng làm
 bước sau khi bước trước còn chưa chắc chắn đúng, vì lỗi sẽ dồn xuống rất
@@ -158,7 +158,7 @@ Kiểm tra sau khi deploy xong:
 - Console Glue → Jobs: có `raw-to-stage`, `stage-to-analytics`
 - Console Athena → Workgroups: có `product-analytics-demo-athena`, output location trỏ đúng `s3://product-analytics-demo-athena-results/`
 - Console Step Functions: có state machine `product-pipeline`
-  (ARN: `arn:aws:states:ap-southeast-1:770880870430:stateMachine:product-pipeline` — dùng ở Bước 6)
+  (ARN: `arn:aws:states:ap-southeast-1:190176596181:stateMachine:product-pipeline` — dùng ở Bước 6)
 - Console Lambda: có function `product-analytics-demo-crawler`
 - Console EventBridge: có rule `product-analytics-demo-daily-crawl`
 
@@ -203,7 +203,7 @@ Theo dõi lỗi (nếu có) tại CloudWatch Logs → log group
 Sau khi đã có **ít nhất 2 ngày** dữ liệu raw:
 
 ```bash
-aws stepfunctions start-execution --state-machine-arn arn:aws:states:ap-southeast-1:770880870430:stateMachine:product-pipeline
+aws stepfunctions start-execution --state-machine-arn arn:aws:states:ap-southeast-1:190176596181:stateMachine:product-pipeline
 ```
 
 Theo dõi tiến trình:
