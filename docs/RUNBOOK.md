@@ -7,13 +7,18 @@ từ trạng thái code (repo hiện tại) lên chạy thật trên AWS. Xem
 
 ## Giá trị cố định của account này
 
-Đã điền sẵn theo account/region/prefix đang dùng — nếu bạn đổi `PREFIX`
-trong `infra/app.py` hoặc deploy sang account/region khác, thay lại các giá
-trị này cho khớp.
+Tên bucket/database/job/Lambda/rule đều do `PREFIX` trong `infra/app.py`
+quyết định — **giữ nguyên dù bạn đổi account hay region**, nên đã điền sẵn
+dưới đây. Riêng `<ACCOUNT_ID>` thì **phụ thuộc account đang đăng nhập**
+(sẽ đổi mỗi khi bạn chuyển account AWS, kể cả cùng 1 project) — thay nó
+bằng Account ID thật của bạn, lấy qua lệnh:
+```bash
+aws sts get-caller-identity --query Account --output text
+```
 
 | Giá trị | Nội dung |
 |---|---|
-| AWS Account | `190176596181` |
+| AWS Account | `<ACCOUNT_ID>` (chạy lệnh trên để lấy giá trị thật) |
 | Region | `ap-southeast-1` |
 | Prefix | `product-analytics-demo` |
 | Bucket Raw | `product-analytics-demo-raw` |
@@ -29,7 +34,7 @@ trị này cho khớp.
 | Lambda crawler | `product-analytics-demo-crawler` |
 | EventBridge rule (crawl hàng ngày) | `product-analytics-demo-daily-crawl` |
 | Step Functions state machine | `product-pipeline` |
-| Step Functions ARN | `arn:aws:states:ap-southeast-1:190176596181:stateMachine:product-pipeline` |
+| Step Functions ARN | `arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:stateMachine:product-pipeline` |
 
 Đánh dấu ✅ sau mỗi bước đã làm xong và kiểm tra được kết quả — đừng làm
 bước sau khi bước trước còn chưa chắc chắn đúng, vì lỗi sẽ dồn xuống rất
@@ -57,6 +62,36 @@ aws configure
 
 Kiểm tra: `aws sts get-caller-identity` trả về đúng account/region bạn dự
 định dùng.
+
+### Về loại credentials — dùng Access Key tĩnh, tránh công cụ SSO/`login`
+
+**Khuyến nghị cho đồ án này**: dùng **Access Key tĩnh** (`aws configure`,
+như trên) — đơn giản, không bao giờ hết hạn, không gây lỗi `ExpiredToken`
+giữa chừng lúc `cdk deploy`/chạy script.
+
+Nếu máy bạn có cài sẵn 1 tool nội bộ dạng `aws login` (SSO, cấp token
+**ngắn hạn**, tự thấy khác `aws configure` thường), biết trước 2 vấn đề hay
+gặp khi dùng nó cho project này:
+- **Token hết hạn giữa chừng khi `cdk deploy`** (thường mất vài phút, nhất
+  là lúc CDK dừng lại hỏi xác nhận IAM) → báo lỗi `ExpiredToken`. Khi đó
+  chỉ cần `aws login` lại rồi chạy lại đúng lệnh vừa lỗi — các resource đã
+  tạo trước đó (nếu có) vẫn giữ nguyên, không mất gì.
+- **Biến môi trường (`AWS_ACCESS_KEY_ID`/`SECRET`/`SESSION_TOKEN`) đè lên
+  profile mới login** — nếu bạn từng set các biến này trong session (ví dụ
+  để script Python/boto3 đọc được credentials kiểu `login` không chuẩn),
+  thì `aws login` lại cũng **không có tác dụng** cho tới khi bạn export lại
+  credentials mới vào đúng các biến đó. Dùng script có sẵn để làm gọn việc
+  này:
+  ```powershell
+  . .\refresh-aws-session.ps1
+  ```
+  (chạy trong `infra/`, nhớ dấu `.` + khoảng trắng ở đầu — dot-source — để
+  biến môi trường giữ lại trong session hiện tại). Chạy lại dòng này mỗi
+  khi gặp `ExpiredToken`, ở bất kỳ bước nào trong file này.
+
+**Tuyệt đối không** paste Secret Access Key vào bất cứ đâu có thể bị lưu
+log (kể cả chat với AI) — nếu lỡ paste, coi như key đã lộ, vào Console xóa
+(deactivate + delete) và tạo key mới ngay.
 
 ---
 
@@ -144,9 +179,10 @@ scripts (không dùng CDK `BucketDeployment` vì construct đó hiện đang l�
 trên nhiều account/region do bug tương thích Python 3.9/urllib3 trong layer
 awscli nội bộ của CDK — lỗi từ phía AWS, không phải do repo này):
 ```bash
-pip install -r ../glue_jobs/requirements.txt   # nếu venv này chưa có boto3
 python ../glue_jobs/upload_scripts.py --bucket product-analytics-demo-scripts
 ```
+(`boto3` đã có sẵn trong `infra/requirements.txt` từ bước cài venv ở trên —
+không cần cài thêm gì)
 Chạy lại lệnh này **mỗi khi bạn sửa code trong `glue_jobs/clean_transform/`**
 — Glue luôn đọc script mới nhất từ S3 mỗi lần job chạy, không cần
 `cdk deploy` lại chỉ vì sửa script.
@@ -158,7 +194,7 @@ Kiểm tra sau khi deploy xong:
 - Console Glue → Jobs: có `raw-to-stage`, `stage-to-analytics`
 - Console Athena → Workgroups: có `product-analytics-demo-athena`, output location trỏ đúng `s3://product-analytics-demo-athena-results/`
 - Console Step Functions: có state machine `product-pipeline`
-  (ARN: `arn:aws:states:ap-southeast-1:190176596181:stateMachine:product-pipeline` — dùng ở Bước 6)
+  (ARN: `arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:stateMachine:product-pipeline` — dùng ở Bước 6)
 - Console Lambda: có function `product-analytics-demo-crawler`
 - Console EventBridge: có rule `product-analytics-demo-daily-crawl`
 
@@ -185,7 +221,7 @@ vài ngày liên tiếp trước khi qua Bước 6, vì `sold_growth_rate` cần
 
 ## Bước 5 — Bật crawl tự động theo lịch (tùy chọn, nên bật sớm)
 
-Đã cấu hình sẵn trong `infra/infra/pipeline_stack.py`: EventBridge gọi
+Đã cấu hình sẵn trong `infra/stacks/pipeline_stack.py`: EventBridge gọi
 Lambda crawler mỗi ngày lúc 18:00 UTC. Không cần làm gì thêm sau khi
 `cdk deploy` — kiểm tra bằng cách:
 
@@ -203,7 +239,7 @@ Theo dõi lỗi (nếu có) tại CloudWatch Logs → log group
 Sau khi đã có **ít nhất 2 ngày** dữ liệu raw:
 
 ```bash
-aws stepfunctions start-execution --state-machine-arn arn:aws:states:ap-southeast-1:190176596181:stateMachine:product-pipeline
+aws stepfunctions start-execution --state-machine-arn arn:aws:states:ap-southeast-1:<ACCOUNT_ID>:stateMachine:product-pipeline
 ```
 
 Theo dõi tiến trình:
@@ -216,6 +252,13 @@ Glue job nào lỗi, log chi tiết).
 Chạy lại lệnh `start-execution` này **mỗi lần muốn cập nhật dữ liệu Stage/
 Analytics** (thủ công, hoặc tự thêm 1 EventBridge rule khác nếu muốn tự
 động hoàn toàn).
+
+> **Đừng bấm `start-execution` 2 lần liên tiếp khi lần trước chưa xong** —
+> mỗi Glue Job mặc định chỉ cho phép 1 lần chạy đồng thời
+> (`MaxConcurrentRuns=1`). Bấm trùng sẽ ra lỗi
+> `Glue.ConcurrentRunsExceededException`, execution đó fail ngay lập tức
+> (an toàn, chưa đụng dữ liệu gì) — chỉ cần bỏ qua execution lỗi đó, đợi
+> execution đầu chạy xong là được, không cần "Redrive from failure".
 
 ---
 
@@ -282,7 +325,7 @@ Kiểm tra: log in ra ROC-AUC và classification report; file
 Khi đang thử nghiệm/sửa infra và muốn **xóa sạch, deploy lại từ con số 0**
 nhiều lần, làm đúng thứ tự sau — bỏ qua thứ tự này (ví dụ chỉ `cdk destroy`
 rồi `cdk deploy` ngay) sẽ dính lỗi **"bucket already exists"** vì bucket
-dùng `RemovalPolicy.RETAIN` (xem `storage_stack.py`) nên `cdk destroy`
+dùng `RemovalPolicy.RETAIN` (xem `infra/stacks/storage_stack.py`) nên `cdk destroy`
 **không xóa bucket**, chỉ xóa các resource khác (Glue Job, Lambda, Step
 Functions...). Bucket còn sống sót sẽ chặn lần deploy tiếp theo do tên
 bucket S3 phải unique toàn AWS.

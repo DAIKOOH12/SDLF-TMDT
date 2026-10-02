@@ -86,7 +86,10 @@ class GlueStack(Stack):
             role=self.glue_role.role_arn,
             glue_version="4.0",
             worker_type="G.1X",
-            number_of_workers=5,
+            # 2 is the minimum Spark allows (1 driver + 1 executor) — plenty
+            # for a few hundred/thousand product rows. Raise this only if you
+            # scale up categories/pages enough that jobs start queuing on CPU.
+            number_of_workers=2,
             command=glue.CfnJob.JobCommandProperty(
                 name="glueetl",
                 python_version="3",
@@ -108,7 +111,7 @@ class GlueStack(Stack):
             role=self.glue_role.role_arn,
             glue_version="4.0",
             worker_type="G.1X",
-            number_of_workers=5,
+            number_of_workers=2,
             command=glue.CfnJob.JobCommandProperty(
                 name="glueetl",
                 python_version="3",

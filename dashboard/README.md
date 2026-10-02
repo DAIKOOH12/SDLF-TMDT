@@ -7,7 +7,7 @@ definitions is limited). Steps to build it manually:
 - QuickSight → Datasets → New dataset → **Athena**
 - Data source name: `product-analytics-athena`
 - Workgroup: the one Athena queries against (uses `<prefix>-athena-results`
-  for query output, from `infra/infra/storage_stack.py`)
+  for query output, from `infra/stacks/storage_stack.py`)
 
 ## 2. Dataset
 - Table: `product_analytics.products` (created/updated by

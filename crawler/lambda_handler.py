@@ -1,7 +1,7 @@
 """EventBridge-scheduled Lambda entrypoint for the daily Tiki crawl.
 
 Deploy this as the handler for a Lambda triggered by an EventBridge rule
-(see infra/infra/pipeline_stack.py). Tiki's listing API is lightweight
+(see infra/stacks/pipeline_stack.py). Tiki's listing API is lightweight
 JSON, so a full run across all configured categories comfortably fits
 within Lambda's 15-minute timeout.
 """

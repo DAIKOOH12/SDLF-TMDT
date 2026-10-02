@@ -3,7 +3,7 @@
 Installs the crawler's dependencies (pure-Python, so safe to build on
 Windows/macOS for the Linux Lambda runtime) and copies the crawler source
 into infra/lambda_build/crawler/. Run this before `cdk deploy` and again
-any time crawler/ changes — infra/infra/pipeline_stack.py references this
+any time crawler/ changes — infra/stacks/pipeline_stack.py references this
 prebuilt folder directly, with no Docker image involved.
 
 Usage:

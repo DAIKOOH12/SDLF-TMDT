@@ -3,9 +3,9 @@ import os
 
 import aws_cdk as cdk
 
-from infra.storage_stack import StorageStack
-from infra.glue_stack import GlueStack
-from infra.pipeline_stack import PipelineStack
+from stacks.storage_stack import StorageStack
+from stacks.glue_stack import GlueStack
+from stacks.pipeline_stack import PipelineStack
 
 app = cdk.App()
 
